@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>纸板与纸箱价格计算系统</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- 引入 XLSX 和 HTML2Canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* 基础样式 */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f3f4f6; 
+            /* Desktop default */
+            height: 100vh; 
+            overflow: hidden; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* 紧凑输入框样式 */
+        .input-group { position: relative; }
+        .input-compact {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            padding-top: 1.25rem;
+            font-size: 0.875rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            background-color: #fff;
+            transition: all 0.2s;
+            line-height: 1.25;
+            appearance: none; /* 移除iOS默认样式 */
+        }
+        .input-compact:focus { 
+            border-color: #3b82f6; 
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .input-label {
+            position: absolute;
+            top: 0.25rem;
+            left: 0.75rem;
+            font-size: 0.65rem;
+            color: #64748b;
+            font-weight: 500;
+            pointer-events: none;
+        }
+
+        /* 布局容器 - 桌面端 */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 420px 1fr 300px;
+            gap: 1rem;
+            height: calc(100vh - 60px);
+            padding: 1rem;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+
+        .panel-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            background: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.95rem;
+        }
+
+        .panel-content {
+            padding: 1rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        /* 表格微调 */
+        .compact-table th { 
+            font-size: 0.75rem; 
+            color: #64748b; 
+            font-weight: 500; 
+            padding: 0.5rem; 
+            text-align: left; 
+            background: #f8fafc; 
+            white-space: nowrap;
+        }
+        .compact-table td { 
+            padding: 0.5rem; 
+            border-bottom: 1px solid #f1f5f9; 
+        }
+        
+        .price-tag { 
+            font-family: 'Segoe UI', sans-serif; 
+            letter-spacing: -0.5px; 
+        }
+
+        /* Modal Overlay */
+        .modal-overlay, .board-modal-overlay, .admin-login-overlay {
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%;
+            background: rgba(0,0,0,0.5); 
+            z-index: 50;
+            display: none; 
+            justify-content: center; 
+            align-items: center;
+            padding: 1rem; /* 移动端增加内边距 */
+        }
+        .modal-overlay.show, .board-modal-overlay.show, .admin-login-overlay.show { 
+            display: flex; 
+        }
+        
+        /* Toast Notification */
+        .notification { 
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            left: 20px; /* 移动端居中 */
+            margin: auto;
+            max-width: 400px;
+            background: #28a745; 
+            color: white; 
+            padding: 12px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+            z-index: 2000; 
+            opacity: 0; 
+            transform: translateY(-20px); 
+            transition: opacity 0.3s, transform 0.3s; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            gap: 12px; 
+            font-size: 14px; 
+            pointer-events: none;
+        }
+        .notification.show { 
+            opacity: 1; 
+            transform: translateY(0); 
+        }
+        .notification.error { background: #dc3545; }
+        .notification.info { background: #17a2b8; }
+        
+        /* 纸板类型选择器 */
+        .paper-type-selector {
+            display: flex;
+            gap: 4px;
+            background: #e5e7eb;
+            padding: 2px;
+            border-radius: 6px;
+        }
+        
+        .paper-type-btn {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        
+        .paper-type-btn.active {
+            background: white;
+            color: #1d4ed8;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        /* 报价项样式 */
+        .quote-item {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            transition: background-color 0.2s;
+        }
+        
+        .quote-item:hover {
+            background-color: #f8fafc;
+        }
+        
+        /* 纸箱类型按钮 */
+        .carton-type-btn {
+            padding: 6px 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.875rem;
+            background: #e9ecef;
+            white-space: nowrap;
+        }
+        .carton-type-btn.active {
+            background: #17a2b8;
+            color: white;
+            border-color: #138496;
+        }
+        
+        /* 可拼按钮 */
+        .foldable-btn {
+            padding: 6px 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.875rem;
+            background: #e9ecef;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+        .foldable-btn.active {
+            background: #28a745;
+            color: white;
+            border-color: #218838;
+        }
+        
+        /* 计算结果网格 */
+        .calculation-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .calculation-box {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        
+        /* 计算项样式 - PC默认样式 */
+        .calc-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            min-height: 1.75rem;
+        }
+        
+        .calc-label {
+            color: #6b7280;
+            font-size: 0.875rem;
+            flex: 0 0 120px; /* 固定宽度，对齐好看 */
+            text-align: left;
+        }
+        
+        .calc-formula {
+            font-size: 0.75rem;
+            color: #9ca3af;
+            font-style: italic;
+            text-align: center;
+            flex: 1;
+            padding: 0 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .calc-value {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 0.875rem;
+            text-align: right;
+            flex: 0 0 120px; /* 固定宽度 */
+            white-space: nowrap;
+        }
+
+        /* 导航按钮 */
+        .nav-btn {
+            padding: 0.5rem 0.8rem;
+            background: #f8fafc;
+            border: 1.2px solid #e5e7eb;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #4b5563;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        
+        /* --- 移动端适配核心 CSS --- */
+        @media (max-width: 1024px) {
+            body {
+                height: auto;
+                overflow-y: auto;
+                padding-bottom: 20px;
+            }
+
+            /* 顶部导航调整 */
+            header {
+                height: auto;
+                flex-wrap: wrap;
+                padding: 10px 15px;
+                gap: 10px;
+            }
+            
+            header h1 {
+                font-size: 1rem;
+            }
+
+            header .flex {
+                flex-wrap: wrap;
+            }
+
+            /* 栅格变垂直堆叠 */
+            .dashboard-grid {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+                overflow: visible;
+                padding: 10px;
+                gap: 15px;
+            }
+
+            .panel {
+                height: auto;
+                max-height: none;
+                overflow: visible;
+                margin-bottom: 0;
+            }
+
+            .panel-content {
+                overflow: visible;
+            }
+
+            /* 纸板配置 */
+            .paper-row td {
+                display: table-cell; /* 保持表格布局 */
+            }
+
+            /* 输入框区域改为两列或一列 */
+            .grid-cols-4 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .col-span-1, .col-span-2 {
+                grid-column: auto / span 1;
+            }
+
+            /* 费用参数 3列变2列 */
+            .grid-cols-3 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            /* 计算结果网格 2列变1列 */
+            .calculation-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            /* --- 关键修改：计算项移动端优化 --- */
+            /* 让每一行显示为两行：第一行 Label---Value，第二行 Formula */
+            .calc-item {
+                flex-wrap: wrap; /* 允许换行 */
+                margin-bottom: 0.75rem;
+                padding-bottom: 0.5rem;
+                border-bottom: 1px dashed #f3f4f6; /* 加虚线分割每项 */
+                height: auto;
+            }
+            
+            .calc-label {
+                flex: 1 0 auto; /* Label 占满剩余空间 */
+                width: auto;
+                color: #4b5563;
+                font-weight: 500;
+            }
+            
+            .calc-value {
+                flex: 0 0 auto; /* Value 不伸缩 */
+                width: auto;
+                font-size: 0.95rem; /* 稍微加大数字 */
+                color: #111827;
+            }
+            
+            .calc-formula {
+                flex: 1 0 100%; /* 强制换行占满整行 */
+                width: 100%;
+                text-align: right; /* 公式靠右显示 */
+                padding: 2px 0 0 0;
+                font-size: 0.7rem; /* 公式字体稍微缩小 */
+                color: #9ca3af;
+                order: 3; /* 确保在最后 */
+                overflow: visible; /* 允许显示完整公式 */
+                white-space: normal; /* 允许公式换行（如果极长） */
+                word-break: break-all;
+            }
+
+            /* 表格横向滚动 */
+            .overflow-x-auto {
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            /* 模态框适配 */
+            .bg-white.rounded-lg.shadow-2xl {
+                width: 95% !important;
+                max-height: 85vh;
+            }
+            
+            /* 隐藏部分文字以节省空间 */
+            .nav-btn span {
+                display: none;
+            }
+            .nav-btn i {
+                margin-right: 0;
+                font-size: 1.1em;
+            }
+            
+            /* 按钮更加易于点击 */
+            button, select, input {
+                min-height: 40px;
+            }
+            
+            .input-compact {
+                padding-top: 1.5rem; /* 增加顶部空间放Label */
+            }
+
+            /* 结果卡片 */
+            .bg-gradient-to-br {
+                position: sticky;
+                bottom: 10px;
+                z-index: 40;
+                margin-top: 0;
+                border-radius: 12px;
+                box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            }
+            
+            /* 自动保存状态 */
+            #autoSaveStatus {
+                display: none; /* 手机端隐藏以节省头部空间 */
+            }
+        }
+
+        /* 超小屏幕适配 */
+        @media (max-width: 380px) {
+            .grid-cols-4, .grid-cols-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 通知组件 -->
+    <div id="notification" class="notification">
+        <i class="fas fa-check-circle"></i> <span id="notificationText">操作成功！</span>
+    </div>
+
+    <!-- 顶部导航栏 -->
+    <header class="bg-white border-b border-gray-200 flex items-center justify-between px-4 py-2 shadow-sm z-30 sticky top-0">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white shrink-0">
+                <i class="fas fa-calculator"></i>
+            </div>
+            <h1 class="font-bold text-gray-800 text-base leading-tight">纸板/纸箱<br>计价系统</h1>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <!-- 自动保存标识 (移动端隐藏) -->
+            <div id="autoSaveStatus" class="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full text-xs text-green-700 border border-green-200 mr-2">
+                <i class="fas fa-save"></i>
+                <span>自动保存</span>
+            </div>
+
+            <!-- 纸板数据管理按钮 -->
+            <button id="boardDataManageBtn" class="nav-btn" title="纸板管理">
+                <i class="fas fa-layer-group text-blue-600"></i>
+                <span>纸板数据</span>
+            </button>
+            
+            <!-- 纸张数据库按钮 -->
+            <button id="viewPaperDataBtn" class="nav-btn" title="数据库">
+                <i class="fas fa-database text-indigo-600"></i>
+                <span>数据库</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主工作区 -->
+    <div class="dashboard-grid">
+        
+        <!-- 1. 纸板配置 (原料端) -->
+        <div class="panel">
+            <div class="panel-header border-l-4 border-blue-500">
+                <span><i class="fas fa-layer-group mr-2 text-blue-500"></i>纸板配置</span>
+                <div class="paper-type-selector">
+                    <button class="paper-type-btn active" data-type="five">五层</button>
+                    <button class="paper-type-btn" data-type="three">三层</button>
+                </div>
+            </div>
+            <div class="panel-content space-y-4">
+                
+                <!-- 保存纸板数据区域 -->
+                <div class="bg-blue-50 border border-blue-100 p-3 rounded-md mb-2">
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="boardNameInput" placeholder="存为模板名称" class="flex-1 text-xs border border-blue-200 rounded px-2 py-2 h-9">
+                        <button id="saveBoardDataBtn" class="bg-blue-600 text-white text-xs px-3 py-2 rounded h-9 flex items-center"><i class="fas fa-save"></i></button>
+                        <button id="resetBoardBtn" class="bg-white border border-gray-300 text-gray-600 text-xs px-3 py-2 rounded h-9 flex items-center"><i class="fas fa-redo"></i></button>
+                    </div>
+                </div>
+
+                <!-- 纸板层级表格 - 动态生成 -->
+                <div class="overflow-x-auto">
+                    <table class="w-full compact-table min-w-[300px]" id="calculationTable">
+                        <thead>
+                            <tr>
+                                <th class="w-12">层级</th>
+                                <th>克重/材质</th>
+                                <th class="w-20">楞型</th>
+                                <th class="w-16 text-right">价格</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calculationBody" class="text-sm text-gray-700">
+                            <!-- JS动态生成行 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 加工费 & 纸板结果 -->
+                <div class="pt-4 border-t border-dashed border-gray-200 mt-auto">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm text-gray-600">纸板加工费(元/㎡)</span>
+                        <input type="number" id="processingFee" value="0.23" step="0.01" class="w-24 text-right text-sm border border-gray-300 rounded px-2 py-2 focus:border-blue-500 focus:outline-none bg-white">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mb-3 text-xs text-gray-500">
+                        <div>原纸小计: <span id="paperSubtotal" class="font-medium text-gray-800">0.000</span></div>
+                        <div class="text-right">加工占比: <span id="processingFeeRatio" class="font-medium">0.000%</span></div>
+                    </div>
+                    <div class="flex justify-between items-center bg-gray-100 p-3 rounded border border-gray-200">
+                        <div class="text-xs text-gray-600 font-bold">纸板单价(元/㎡)</div>
+                        <div class="text-xl font-bold text-blue-700 price-tag" id="totalPrice">0.000</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 纸箱参数 (产品端) -->
+        <div class="panel">
+            <div class="panel-header border-l-4 border-indigo-500">
+                <span><i class="fas fa-box mr-2 text-indigo-500"></i>纸箱规格</span>
+                <div class="flex gap-2">
+                    <button class="carton-type-btn active" data-type="standard">标准</button>
+                    <button class="carton-type-btn" data-type="other">飞机盒</button>
+                </div>
+            </div>
+            
+            <div class="panel-content">
+                <!-- 纸板价格来源 -->
+                <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs text-indigo-700 font-medium">当前纸板:</span>
+                        <span class="text-base font-bold text-indigo-900" id="cartonBoardPriceDisplay">0.000 元/㎡</span>
+                    </div>
+                    <select id="selectSavedBoard" class="w-full text-xs border border-indigo-200 rounded px-2 py-2 bg-white text-indigo-900 h-9">
+                        <option value="" disabled selected>选择纸板数据...</option>
+                        <option value="use_current">使用上方配置数据</option>
+                    </select>
+                    <input type="hidden" id="cartonBoardPrice" value="0">
+                </div>
+                
+                <!-- 尺寸输入区 -->
+                <div class="grid grid-cols-4 gap-3 mb-4">
+                    <div class="input-group col-span-1">
+                        <input type="number" id="cartonLength" value="200" step="1" inputmode="numeric" class="input-compact">
+                        <span class="input-label">长(mm)</span>
+                    </div>
+                    <div class="input-group col-span-1">
+                        <input type="number" id="cartonWidth" value="150" step="1" inputmode="numeric" class="input-compact">
+                        <span class="input-label">宽(mm)</span>
+                    </div>
+                    <div class="input-group col-span-1">
+                        <input type="number" id="cartonHeight" value="150" step="1" inputmode="numeric" class="input-compact">
+                        <span class="input-label">高(mm)</span>
+                    </div>
+                    <div class="input-group col-span-1">
+                        <input type="number" id="cartonEar" value="30" step="1" inputmode="numeric" class="input-compact bg-gray-50">
+                        <span class="input-label">耳朵</span>
+                    </div>
+                    <div class="input-group col-span-2">
+                        <input type="number" id="cartonQuantity" value="100" step="1" inputmode="numeric" class="input-compact font-bold text-indigo-700 bg-indigo-50">
+                        <span class="input-label">订单数量(个)</span>
+                    </div>
+                    <div class="input-group col-span-2">
+                        <input type="text" id="productName" value="纸箱" class="input-compact">
+                        <span class="input-label">产品名称</span>
+                    </div>
+                </div>
+
+                <!-- 费用参数 -->
+                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center">
+                    费用参数 <span class="h-px bg-gray-200 flex-1 ml-3"></span>
+                </h3>
+                
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    <div class="input-group">
+                        <input type="number" id="cartonProcessingFee" value="0.15" step="0.01" inputmode="decimal" class="input-compact">
+                        <span class="input-label">加工费</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="packingFee" value="0.05" step="0.01" inputmode="decimal" class="input-compact">
+                        <span class="input-label">打包费</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="warehouseFee" value="0.03" step="0.01" inputmode="decimal" class="input-compact">
+                        <span class="input-label">仓库费</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="printingPlateFee" value="0" step="1" inputmode="numeric" class="input-compact">
+                        <span class="input-label">印刷版</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="moldFee" value="0" step="1" inputmode="numeric" class="input-compact">
+                        <span class="input-label">模具费</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="profit" value="0.95" step="0.01" inputmode="decimal" class="input-compact text-red-500 font-medium bg-red-50">
+                        <span class="input-label">利润系数</span>
+                    </div>
+                </div>
+
+                <!-- 可拼选项 -->
+                <div class="mb-4" id="foldableContainer">
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm text-gray-600">类型:</span>
+                        <button id="foldableBtn" class="foldable-btn" disabled>不可拼</button>
+                    </div>
+                </div>
+
+                <!-- 计算明细 - 恢复完整内容 -->
+                <div class="calculation-grid">
+                    <!-- 计算结果 -->
+                    <div class="calculation-box">
+                        <h4><i class="fas fa-calculator mr-2 text-blue-500"></i>计算结果</h4>
+                        <!-- 单只纸箱面积 -->
+                        <div class="calc-item">
+                            <span class="calc-label">单只纸箱面积</span>
+                            <span class="calc-formula" id="singleCartonAreaFormulaValue">730*300</span>
+                            <span class="calc-value" id="singleCartonAreaResult">0.000 ㎡</span>
+                        </div>
+                        
+                        <!-- 总纸箱面积 -->
+                        <div class="calc-item">
+                            <span class="calc-label">总纸箱面积</span>
+                            <span class="calc-formula" id="totalCartonAreaFormulaValue">0.000*100</span>
+                            <span class="calc-value" id="totalCartonAreaResult">0.000 ㎡</span>
+                        </div>
+                        
+                        <!-- 印刷版费 -->
+                        <div class="calc-item">
+                            <span class="calc-label">印刷版费</span>
+                            <span class="calc-formula"></span>
+                            <span class="calc-value" id="printingPlateFeeResult">0.000 元</span>
+                        </div>
+                        
+                        <!-- 模具费 -->
+                        <div class="calc-item">
+                            <span class="calc-label">模具费</span>
+                            <span class="calc-formula"></span>
+                            <span class="calc-value" id="moldFeeResult">0.000 元</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 费用明细 -->
+                    <div class="calculation-box">
+                        <h4><i class="fas fa-money-bill-wave mr-2 text-green-500"></i>费用明细</h4>
+                        <!-- 纸箱加工费 -->
+                        <div class="calc-item">
+                            <span class="calc-label">纸箱加工费</span>
+                            <span class="calc-formula" id="totalProcessingFeeFormulaValue">0.15*4.5</span>
+                            <span class="calc-value" id="totalProcessingFeeDetail">0.000 元</span>
+                        </div>
+                        
+                        <!-- 纸箱成本 -->
+                        <div class="calc-item">
+                            <span class="calc-label">纸箱成本</span>
+                            <span class="calc-formula" id="cartonCostFormulaValue">1.25*4.5+0.675</span>
+                            <span class="calc-value" id="cartonCostResult">0.000 元</span>
+                        </div>
+                        
+                        <!-- 纸箱加工费占比 -->
+                        <div class="calc-item">
+                            <span class="calc-label">纸箱加工费占比</span>
+                            <span class="calc-formula"></span>
+                            <span class="calc-value" id="processingFeeRatioResult">0.000%</span>
+                        </div>
+                        
+                        <!-- 利润金额 -->
+                        <div class="calc-item">
+                            <span class="calc-label">利润金额</span>
+                            <span class="calc-formula"></span>
+                            <span class="calc-value" id="profitAmountResult">0.000 元</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 结果与报价单 (结果端) -->
+        <div class="flex flex-col gap-4">
+            
+            <!-- 实时单价卡片 (Sticky on Mobile) -->
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 text-white shadow-lg shrink-0">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="text-gray-400 text-xs uppercase tracking-widest">最终含税单价</div>
+                    <span id="currentBoardSource" class="text-[10px] bg-white/10 px-2 py-0.5 rounded text-gray-300 truncate max-w-[120px]">未选择</span>
+                </div>
+                <div class="flex items-baseline gap-1 mb-2">
+                    <span class="text-4xl font-bold tracking-tight" id="displayUnitPrice2">0.000</span>
+                    <span class="text-sm text-gray-400">元/个</span>
+                </div>
+                <div class="text-xs text-gray-400 flex justify-between border-t border-gray-700 pt-3 mt-1 mb-3">
+                    <span id="displayTotalAmount">总金额: ¥0.000</span>
+                    <span class="text-green-400" id="displayProfit">利润: ¥0.000</span>
+                </div>
+                
+                <button id="addQuoteBtn" class="w-full bg-blue-600 active:bg-blue-700 text-white font-medium py-3 rounded-lg shadow-lg transition flex items-center justify-center gap-2 text-sm">
+                    <i class="fas fa-plus"></i> 添加到报价列表
+                </button>
+            </div>
+
+            <!-- 报价清单列表 -->
+            <div class="panel flex-1 flex flex-col min-h-0">
+                <div class="panel-header border-l-4 border-green-500 bg-white">
+                    <span><i class="fas fa-list-ul mr-2 text-green-500"></i>已添加 (<span id="quoteCount">0</span>)</span>
+                    <button id="clearAllQuotesBtn" class="text-gray-400 hover:text-red-500 text-xs px-2 py-1"><i class="fas fa-trash-alt"></i> 清空</button>
+                </div>
+                <div class="overflow-y-auto max-h-[300px] p-0" id="addedQuotesBody">
+                    <div class="p-8 text-center text-gray-400 text-sm italic">
+                        暂无报价，请点击上方按钮添加
+                    </div>
+                </div>
+                
+                <!-- 底部操作区 -->
+                <div class="p-3 bg-gray-50 border-t border-gray-200">
+                    <button id="generateCartonQuoteBtn" class="w-full bg-green-600 active:bg-green-700 text-white font-medium py-3 rounded shadow-sm text-sm transition">
+                        <i class="fas fa-file-invoice mr-1"></i> 生成报价单图片
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：报价单预览 -->
+    <div id="quoteModal" class="modal-overlay">
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex justify-between items-center p-3 border-b border-gray-100">
+                <h3 class="font-bold text-gray-800 text-base">报价单预览</h3>
+                <button id="quoteCloseBtn" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="overflow-y-auto p-2 bg-gray-50 flex-1" id="quoteContentWrapper">
+                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mx-auto">
+                    <!-- 报价单头部 -->
+                    <div class="flex justify-between items-end border-b-2 border-blue-600 pb-3 mb-4">
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-800">纸箱报价单</h1>
+                            <p class="text-gray-500 text-xs mt-1">江西云包科技有限公司</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-gray-500">日期: <span id="quoteDate">--</span></p>
+                        </div>
+                    </div>
+                    
+                    <!-- 报价单表格 -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="bg-gray-50 text-gray-600">
+                                    <th class="p-2 text-left">材质/楞别</th>
+                                    <th class="p-2 text-left">名称</th>
+                                    <th class="p-2 text-center">规格</th>
+                                    <th class="p-2 text-center">数量</th>
+                                    <th class="p-2 text-right">单价</th>
+                                    <th class="p-2 text-right">小计</th>
+                                </tr>
+                            </thead>
+                            <tbody id="quoteTableBody" class="divide-y divide-gray-100">
+                                <!-- JS 生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-6 text-center text-[10px] text-gray-400 pt-2 border-t border-gray-100">
+                        专业纸箱定制系统生成
+                    </div>
+                </div>
+            </div>
+            <div class="p-3 bg-gray-50 border-t border-gray-200 flex gap-3">
+                <button id="quoteCopyBtn" class="flex-1 bg-blue-600 text-white py-2.5 rounded text-sm"><i class="fas fa-copy mr-1"></i> 复制</button>
+                <button id="quoteSaveBtn" class="flex-1 bg-green-600 text-white py-2.5 rounded text-sm"><i class="fas fa-download mr-1"></i> 下载</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：纸张数据库 & 管理员 -->
+    <div id="dataModal" class="modal-overlay">
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden">
+            <div class="flex border-b border-gray-200 shrink-0">
+                <button class="flex-1 py-3 text-sm font-semibold text-blue-600 border-b-2 border-blue-600 bg-blue-50" id="tabPaperData">纸张库</button>
+                <button class="flex-1 py-3 text-sm font-semibold text-gray-500 hover:bg-gray-50" id="tabAdmin">导入</button>
+                <button class="w-10 flex items-center justify-center text-gray-400" id="dataModalCloseBtn"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <!-- 纸张数据库内容 -->
+            <div id="contentPaperData" class="flex-1 flex flex-col p-3 overflow-hidden">
+                <div class="flex flex-col gap-2 mb-3">
+                    <input type="text" id="paperSearchInput" placeholder="搜索纸张..." class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                    <div class="flex gap-2">
+                        <select id="paperTypeFilter" class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-white">
+                            <option value="全部">全部类型</option>
+                            <option value="箱板纸">箱板纸</option>
+                            <option value="瓦纸">瓦纸</option>
+                        </select>
+                        <button id="resetSearchBtn" class="px-4 bg-gray-100 rounded text-gray-600"><i class="fas fa-redo"></i></button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto border border-gray-200 rounded">
+                    <table class="w-full text-xs text-left">
+                        <thead class="bg-gray-50 text-gray-600 sticky top-0">
+                            <tr>
+                                <th class="p-2">类型</th>
+                                <th class="p-2">克重</th>
+                                <th class="p-2">价格</th>
+                                <th class="p-2">厂商</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paperDataBody" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+                <div class="mt-3 flex justify-between items-center text-xs text-gray-500 shrink-0">
+                    <span id="dataCountInfo">0条</span>
+                    <button id="clearDataBtn" class="px-2 py-1 bg-red-100 text-red-600 rounded text-xs"><i class="fas fa-trash-alt"></i> 清空</button>
+                </div>
+            </div>
+
+            <!-- 管理员内容 -->
+            <div id="contentAdmin" class="flex-1 flex-col p-4 overflow-y-auto hidden">
+                <div class="w-full">
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                        <h3 class="font-bold text-yellow-800 mb-2 text-sm">Excel导入</h3>
+                        <p class="text-xs text-yellow-700 mb-4">仅支持 .xlsx 格式</p>
+                        <input type="file" id="adminExcelFile" accept=".xlsx,.xls" class="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-4"/>
+                        <div class="flex flex-col gap-2">
+                            <button id="adminImportDataBtn" class="w-full bg-blue-600 text-white py-2.5 rounded text-sm"><i class="fas fa-file-import mr-1"></i> 导入数据</button>
+                            <button id="adminDownloadTemplateBtn" class="w-full bg-gray-200 text-gray-700 py-2.5 rounded text-sm"><i class="fas fa-file-download mr-1"></i> 下载模板</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：纸板数据管理 -->
+    <div id="boardDataModal" class="board-modal-overlay">
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden">
+            <div class="flex justify-between items-center p-3 border-b border-gray-200 shrink-0">
+                <h3 class="font-bold text-gray-800 text-base">纸板模板管理</h3>
+                <button id="boardModalCloseBtn" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="flex-1 flex flex-col p-3 overflow-hidden">
+                <div class="flex justify-between items-center mb-3 shrink-0">
+                    <span id="boardDataCount" class="text-xs text-gray-600">0 条数据</span>
+                    <button id="clearAllBoardDataBtn" class="px-2 py-1 bg-red-100 text-red-600 rounded text-xs">
+                        <i class="fas fa-trash-alt mr-1"></i> 清空
+                    </button>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto border border-gray-200 rounded">
+                    <table class="w-full text-xs text-left">
+                        <thead class="bg-gray-50 text-gray-600 sticky top-0">
+                            <tr>
+                                <th class="p-2">名称</th>
+                                <th class="p-2">价格</th>
+                                <th class="p-2 text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="savedBoardBody" class="divide-y divide-gray-100">
+                            <!-- JS动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 逻辑 -->
+    <script>
+        // --- 全局变量 ---
+        // 初始纸张数据
+        let paperData = [
+            { type: "箱板纸", weight: 110, price: 3330, corrugatedType: "-", supplier: "造纸厂A", updateDate: "2025-12-1" },
+            { type: "箱板纸", weight: 120, price: 3400, corrugatedType: "-", supplier: "造纸厂B", updateDate: "2025-11-28" },
+            { type: "瓦纸", weight: 120, price: 3400, corrugatedType: "B楞", supplier: "造纸厂B", updateDate: "2025-11-28" },
+            { type: "瓦纸", weight: 100, price: 3300, corrugatedType: "A楞", supplier: "造纸厂A", updateDate: "2025-11-25" },
+            { type: "瓦纸", weight: 50, price: 4200, corrugatedType: "-", supplier: "造纸厂C", updateDate: "2025-11-30" },
+            { type: "瓦纸", weight: 70, price: 4100, corrugatedType: "-", supplier: "造纸厂A", updateDate: "2025-11-20" },
+            { type: "箱板纸", weight: 150, price: 3500, corrugatedType: "-", supplier: "造纸厂C", updateDate: "2025-11-30" }
+        ];
+        
+        const shrinkageRates = {"E楞":1.27,"B楞":1.341,"C楞":1.45,"-":1.0,"无":1.0};
+        const paperLoss = 1.04;
+        
+        // 状态变量
+        let currentPaperType = "five";
+        let savedBoardData = [];
+        let addedQuotes = [];
+        let filteredPaperData = [];
+        let currentFilterType = "全部";
+        let currentSearchTerm = "";
+        let isFoldable = false;
+        let currentCartonType = "standard";
+        let cartonBoardPrice = 0;
+        let currentBoardSourceType = "未选择";
+        let currentPage = 1, itemsPerPage = 20;
+
+        // --- 初始化 ---
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM加载完成，开始初始化...');
+            loadFromLocalStorage();
+            filterPaperData();
+            initCalculationTable();
+            updateCalculation();
+            loadSavedBoardData();
+            updateSavedBoardSelect();
+            updateAddedQuotesList();
+            calculateCartonQuote();
+            updateFoldableButton();
+            
+            // 绑定事件
+            bindEvents();
+            console.log('初始化完成');
+        });
+
+        function bindEvents() {
+            console.log('开始绑定事件...');
+            
+            // 纸板类型切换
+            document.querySelectorAll('.paper-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.paper-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentPaperType = this.dataset.type;
+                    initCalculationTable();
+                    updateCalculation();
+                    saveToLocalStorage();
+                });
+            });
+
+            // 保存纸板数据
+            document.getElementById('saveBoardDataBtn').addEventListener('click', saveBoardData);
+            
+            // 重置按钮
+            document.getElementById('resetBoardBtn').addEventListener('click', resetBoardCalculator);
+            
+            // 加载纸板数据
+            document.getElementById('selectSavedBoard').addEventListener('change', function() {
+                loadSelectedBoardData(this.value);
+            });
+
+            // 加工费输入
+            document.getElementById('processingFee').addEventListener('input', () => { 
+                updateCalculation(); 
+                saveToLocalStorage();
+            });
+            
+            // 纸箱类型切换
+            document.querySelectorAll('.carton-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.carton-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentCartonType = this.dataset.type;
+                    
+                    // 更新可拼按钮状态
+                    updateFoldableButton();
+                    
+                    // 重新计算纸箱报价
+                    calculateCartonQuote();
+                    saveToLocalStorage();
+                });
+            });
+
+            // 可拼按钮
+            document.getElementById('foldableBtn').addEventListener('click', function() {
+                if (!this.disabled) {
+                    isFoldable = !isFoldable;
+                    if (isFoldable) {
+                        this.classList.add('active');
+                        this.textContent = '可拼';
+                    } else {
+                        this.classList.remove('active');
+                        this.textContent = '不可拼';
+                    }
+                    
+                    // 重新计算纸箱报价
+                    calculateCartonQuote();
+                    saveToLocalStorage();
+                }
+            });
+
+            // 纸箱参数输入
+            ['cartonLength', 'cartonWidth', 'cartonHeight', 'cartonEar', 'cartonQuantity', 
+             'cartonProcessingFee', 'packingFee', 'warehouseFee', 'printingPlateFee', 'moldFee', 'profit', 'productName']
+             .forEach(id => {
+                 const element = document.getElementById(id);
+                 if (element) {
+                     element.addEventListener('input', () => {
+                         calculateCartonQuote();
+                         saveToLocalStorage();
+                     });
+                 }
+             });
+
+            // 报价操作
+            document.getElementById('addQuoteBtn').addEventListener('click', addQuoteToList);
+            document.getElementById('clearAllQuotesBtn').addEventListener('click', clearAllQuotes);
+            document.getElementById('generateCartonQuoteBtn').addEventListener('click', generateCartonQuote);
+            
+            // 模态框操作
+            document.getElementById('quoteCloseBtn').addEventListener('click', () => toggleModal('quoteModal', false));
+            document.getElementById('quoteCopyBtn').addEventListener('click', copyQuoteToClipboard);
+            document.getElementById('quoteSaveBtn').addEventListener('click', saveQuoteImage);
+            
+            // 数据库模态框
+            document.getElementById('viewPaperDataBtn').addEventListener('click', function() {
+                toggleModal('dataModal', true);
+                switchTab('paper');
+                renderPaperDataTable();
+            });
+            
+            // 纸板数据管理按钮
+            const boardDataManageBtn = document.getElementById('boardDataManageBtn');
+            if (boardDataManageBtn) {
+                boardDataManageBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    toggleModal('boardDataModal', true);
+                    renderSavedBoardTable();
+                });
+            }
+            
+            document.getElementById('dataModalCloseBtn').addEventListener('click', () => toggleModal('dataModal', false));
+            document.getElementById('boardModalCloseBtn').addEventListener('click', () => toggleModal('boardDataModal', false));
+            
+            // 数据库Tab切换
+            document.getElementById('tabPaperData').addEventListener('click', function() {
+                switchTab('paper');
+                renderPaperDataTable();
+            });
+            document.getElementById('tabAdmin').addEventListener('click', () => switchTab('admin'));
+            
+            // 数据库筛选
+            document.getElementById('paperSearchInput').addEventListener('input', function() {
+                currentSearchTerm = this.value; 
+                filterPaperData(); 
+                renderPaperDataTable();
+            });
+            
+            document.getElementById('paperTypeFilter').addEventListener('change', function() {
+                currentFilterType = this.value; 
+                filterPaperData(); 
+                renderPaperDataTable();
+            });
+            
+            document.getElementById('resetSearchBtn').addEventListener('click', () => {
+                document.getElementById('paperSearchInput').value = "";
+                document.getElementById('paperTypeFilter').value = "全部";
+                currentSearchTerm = ""; 
+                currentFilterType = "全部";
+                filterPaperData(); 
+                renderPaperDataTable();
+            });
+            
+            document.getElementById('clearDataBtn').addEventListener('click', () => {
+                if(confirm('确定清空所有纸张数据吗？')) { 
+                    clearAllPaperData();
+                }
+            });
+            
+            // 纸板数据管理
+            document.getElementById('clearAllBoardDataBtn').addEventListener('click', clearAllBoardData);
+
+            // Excel 导入导出
+            document.getElementById('adminImportDataBtn').addEventListener('click', importExcelData);
+            document.getElementById('adminDownloadTemplateBtn').addEventListener('click', downloadTemplate);
+            
+            // 模态框外点击关闭
+            document.querySelectorAll('.modal-overlay, .board-modal-overlay').forEach(modal => {
+                modal.addEventListener('click', function(e) {
+                    if(e.target === this) {
+                        this.classList.remove('show');
+                        document.body.style.overflow = 'auto';
+                    }
+                });
+            });
+            
+            // 纸板表格行内事件（动态绑定）
+            document.addEventListener('change', function(e) {
+                if (e.target.classList.contains('weight-select') || e.target.classList.contains('corrugated-type-select')) {
+                    updateRowCalculation(e.target.closest('tr'));
+                    updateCalculation();
+                    saveToLocalStorage();
+                }
+            });
+            
+            console.log('事件绑定完成');
+        }
+
+        // --- 核心功能函数 ---
+
+        // 初始化纸板计算表格
+        function initCalculationTable() {
+            const tableBody = document.getElementById('calculationBody');
+            tableBody.innerHTML = '';
+            const paperRows = currentPaperType === 'five' ? ['面纸','瓦纸','芯纸','瓦纸','里纸'] : ['面纸','瓦纸','里纸'];
+            
+            paperRows.forEach((paperType, index) => {
+                const paperOptions = getPaperOptions(paperType);
+                let weightOptionsHtml = '<option value="" disabled selected>选择</option>';
+                paperOptions.forEach(option => {
+                    weightOptionsHtml += `<option value="${option.weight}" data-price="${option.price}">${option.weight}g (${option.supplier.substring(0,4)})</option>`;
+                });
+                
+                // 根据纸张类型决定是否显示瓦楞类型选择框
+                let corrugatedSelectHtml = '';
+                if (paperType === '瓦纸') {
+                    corrugatedSelectHtml = `
+                        <select class="corrugated-type-select text-xs border border-gray-300 rounded px-1 py-2 bg-white w-full corrugated-select appearance-none">
+                            <option value="" disabled selected>楞型</option>
+                            <option value="E楞">E</option>
+                            <option value="B楞">B</option>
+                            <option value="C楞">C</option>
+                        </select>`;
+                } else {
+                    corrugatedSelectHtml = '<div class="text-xs text-gray-400 px-1 py-1 text-center">-</div>';
+                }
+                
+                const row = document.createElement('tr');
+                row.className = 'paper-row';
+                row.dataset.paperType = paperType;
+                row.innerHTML = `
+                    <td class="font-medium text-gray-900 align-middle py-2 pl-1">${paperType}</td>
+                    <td class="align-middle py-1">
+                        <select class="weight-select text-xs border border-gray-300 rounded px-1 py-2 bg-white w-full paper-weight-select appearance-none">${weightOptionsHtml}</select>
+                    </td>
+                    <td class="align-middle py-1">
+                        ${corrugatedSelectHtml}
+                    </td>
+                    <td class="text-right text-gray-600 font-medium paper-price-result align-middle py-1 pr-1">0.00</td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            const savedState = localStorage.getItem('paperBoardCalc_calculationState');
+            if(savedState) restoreCalculationState(JSON.parse(savedState));
+        }
+
+        function resetBoardCalculator() {
+            if (confirm('确定重置纸板配置？')) {
+                const weightSelects = document.querySelectorAll('.weight-select');
+                const corrugatedSelects = document.querySelectorAll('.corrugated-type-select');
+                weightSelects.forEach(select => select.value = "");
+                corrugatedSelects.forEach(select => { if (select.tagName === 'SELECT') select.value = ""; });
+                document.getElementById('processingFee').value = "0.23";
+                updateCalculation();
+                saveToLocalStorage();
+                showNotification('纸板配置已重置！', 'success');
+            }
+        }
+
+        function getPaperOptions(paperType) {
+            if (paperType === '面纸' || paperType === '里纸') return paperData.filter(item => item.type === "箱板纸");
+            else if (paperType === '瓦纸' || paperType === '芯纸') return paperData.filter(item => item.type === "瓦纸");
+            return [];
+        }
+
+        function updateRowCalculation(row) {
+            const weightSelect = row.querySelector('.weight-select');
+            const corrugatedSelect = row.querySelector('.corrugated-type-select');
+            const priceResultCell = row.querySelector('.paper-price-result');
+            const selectedWeight = weightSelect.value;
+            const selectedOption = weightSelect.selectedOptions[0];
+            
+            if (!selectedWeight) { priceResultCell.textContent = '0.00'; return; }
+            
+            const weight = parseFloat(selectedWeight);
+            const price = parseFloat(selectedOption.dataset.price);
+            
+            if (isNaN(weight) || isNaN(price) || weight <= 0 || price <= 0) { priceResultCell.textContent = '0.00'; return; }
+            
+            let shrinkage = 1.0;
+            if (row.dataset.paperType === '瓦纸' && corrugatedSelect) {
+                const corrugatedType = corrugatedSelect.value;
+                shrinkage = shrinkageRates[corrugatedType] || 1.0;
+            }
+            
+            const paperPrice = (price * weight * shrinkage * paperLoss) / 1000000;
+            priceResultCell.textContent = paperPrice.toFixed(3);
+        }
+
+        function updateCalculation() {
+            let paperSubtotal = 0;
+            document.querySelectorAll('.paper-price-result').forEach(cell => {
+                const value = parseFloat(cell.textContent);
+                if (!isNaN(value)) paperSubtotal += value;
+            });
+            
+            const processingFee = parseFloat(document.getElementById('processingFee').value) || 0;
+            const totalPrice = paperSubtotal + processingFee;
+            const processingFeeRatio = totalPrice > 0 ? (processingFee / totalPrice) * 100 : 0;
+            
+            document.getElementById('paperSubtotal').textContent = paperSubtotal.toFixed(3);
+            document.getElementById('totalPrice').textContent = totalPrice.toFixed(3);
+            document.getElementById('processingFeeRatio').textContent = processingFeeRatio.toFixed(1) + '%';
+            
+            if (currentBoardSourceType === '使用纸板配置内的数据') {
+                cartonBoardPrice = totalPrice;
+                document.getElementById('cartonBoardPrice').value = totalPrice;
+                document.getElementById('cartonBoardPriceDisplay').textContent = totalPrice.toFixed(3) + ' 元/㎡';
+                document.getElementById('currentBoardSource').textContent = '自选配置';
+                calculateCartonQuote();
+            }
+        }
+
+        function updateFoldableButton() {
+            const foldableBtn = document.getElementById('foldableBtn');
+            if (currentCartonType === 'other') {
+                foldableBtn.disabled = false;
+            } else {
+                foldableBtn.disabled = true;
+                foldableBtn.classList.remove('active');
+                foldableBtn.textContent = '不可拼';
+                isFoldable = false;
+            }
+        }
+
+        function calculateCartonArea(length, width, height, ear) {
+            let singleCartonArea = 0;
+            if (currentCartonType === 'standard') {
+                singleCartonArea = ((length + width) * 2 + ear) * (width + height) / 1000000;
+            } else {
+                if (isFoldable) {
+                    singleCartonArea = (length + (height * 4) + (ear * 4)) * (((width * 2) + (height * 3)) - height) / 1000000;
+                } else {
+                    singleCartonArea = (length + (height * 4) + (ear * 4)) * ((width * 2) + (height * 3)) / 1000000;
+                }
+            }
+            return singleCartonArea;
+        }
+
+        // 计算总长和总宽（用于公式显示）
+        function calculateTotalDimensions(length, width, height, ear) {
+            let totalLength = 0;
+            let totalWidth = 0;
+            
+            if (currentCartonType === 'standard') {
+                totalLength = (length + width) * 2 + ear;
+                totalWidth = width + height;
+            } else {
+                if (isFoldable) {
+                    totalWidth = ((width * 2) + (height * 3)) - height;
+                } else {
+                    totalWidth = (width * 2) + (height * 3);
+                }
+                totalLength = length + (height * 4) + (ear * 4);
+            }
+            
+            return { totalLength, totalWidth };
+        }
+
+        function calculateCartonQuote() {
+            const cartonProcessingFee = parseFloat(document.getElementById('cartonProcessingFee').value) || 0;
+            const packingFee = parseFloat(document.getElementById('packingFee').value) || 0;
+            const warehouseFee = parseFloat(document.getElementById('warehouseFee').value) || 0;
+            const printingPlateFee = parseFloat(document.getElementById('printingPlateFee').value) || 0;
+            const moldFee = parseFloat(document.getElementById('moldFee').value) || 0;
+            const profit = parseFloat(document.getElementById('profit').value) || 0.95;
+            
+            const length = parseFloat(document.getElementById('cartonLength').value) || 0;
+            const width = parseFloat(document.getElementById('cartonWidth').value) || 0;
+            const height = parseFloat(document.getElementById('cartonHeight').value) || 0;
+            const ear = parseFloat(document.getElementById('cartonEar').value) || 0;
+            const quantity = parseInt(document.getElementById('cartonQuantity').value) || 0;
+            
+            const boardPrice = cartonBoardPrice;
+            const singleCartonArea = calculateCartonArea(length, width, height, ear);
+            const totalCartonArea = singleCartonArea * quantity;
+            
+            // 计算总长和总宽（用于公式显示）
+            const { totalLength, totalWidth } = calculateTotalDimensions(length, width, height, ear);
+
+            const totalProcessingFeePerArea = cartonProcessingFee + packingFee + warehouseFee;
+            const totalProcessingFee = totalProcessingFeePerArea * totalCartonArea;
+            
+            const boardCost = boardPrice * totalCartonArea;
+            const processingCostTotal = totalProcessingFeePerArea * totalCartonArea;
+            const cartonCost = boardCost + processingCostTotal;
+            
+            const processingFeeRatio = cartonCost > 0 ? (processingCostTotal / cartonCost) * 100 : 0;
+            const profitAmount = cartonCost / profit - cartonCost;
+            
+            const boardCostWithProfit = (boardPrice + totalProcessingFeePerArea) / profit * totalCartonArea;
+            const subtotal = boardCostWithProfit + printingPlateFee + moldFee;
+            const unitPrice = quantity > 0 ? subtotal / quantity : 0;
+            
+            // 更新计算结果 - 保留三位小数
+            document.getElementById('singleCartonAreaResult').textContent = singleCartonArea.toFixed(3) + ' ㎡';
+            document.getElementById('totalCartonAreaResult').textContent = totalCartonArea.toFixed(3) + ' ㎡';
+            document.getElementById('printingPlateFeeResult').textContent = printingPlateFee.toFixed(3) + ' 元';
+            document.getElementById('moldFeeResult').textContent = moldFee.toFixed(3) + ' 元';
+            
+            // 更新费用明细
+            document.getElementById('totalProcessingFeeDetail').textContent = totalProcessingFee.toFixed(3) + ' 元';
+            document.getElementById('cartonCostResult').textContent = cartonCost.toFixed(3) + ' 元';
+            document.getElementById('processingFeeRatioResult').textContent = processingFeeRatio.toFixed(3) + '%';
+            document.getElementById('profitAmountResult').textContent = profitAmount.toFixed(3) + ' 元';
+            
+            // 更新公式
+            const singleAreaFormula = `${totalLength.toFixed(0)}*${totalWidth.toFixed(0)}`;
+            document.getElementById('singleCartonAreaFormulaValue').textContent = singleAreaFormula;
+            
+            const totalAreaFormula = `${singleCartonArea.toFixed(3)}*${quantity}`;
+            document.getElementById('totalCartonAreaFormulaValue').textContent = totalAreaFormula;
+            
+            const processingFeeFormula = `${totalProcessingFeePerArea.toFixed(3)}*${totalCartonArea.toFixed(3)}`;
+            document.getElementById('totalProcessingFeeFormulaValue').textContent = processingFeeFormula;
+            
+            const costFormula = `${boardPrice.toFixed(3)}*${totalCartonArea.toFixed(3)}+${totalProcessingFee.toFixed(3)}`;
+            document.getElementById('cartonCostFormulaValue').textContent = costFormula;
+            
+            // 更新单价卡片
+            document.getElementById('displayUnitPrice2').textContent = unitPrice.toFixed(3);
+            document.getElementById('displayTotalAmount').textContent = '总:¥' + subtotal.toFixed(3);
+            document.getElementById('displayProfit').textContent = '利:¥' + profitAmount.toFixed(3);
+        }
+
+        function getMaterialAndCorrugated() {
+            const paperRows = document.querySelectorAll('.paper-row');
+            let materialParts = [];
+            let corrugatedParts = [];
+            paperRows.forEach(row => {
+                const weightSelect = row.querySelector('.weight-select');
+                const corrugatedSelect = row.querySelector('.corrugated-type-select');
+                materialParts.push((weightSelect && weightSelect.value) ? weightSelect.value : '0');
+                if (row.dataset.paperType === '瓦纸' && corrugatedSelect && corrugatedSelect.value) {
+                    corrugatedParts.push(corrugatedSelect.value.replace('楞',''));
+                }
+            });
+            return { material: materialParts.join('/'), corrugated: corrugatedParts.join('') };
+        }
+
+        function addQuoteToList() {
+            const { material, corrugated } = getMaterialAndCorrugated();
+            const cartonProcessingFee = parseFloat(document.getElementById('cartonProcessingFee').value) || 0;
+            const packingFee = parseFloat(document.getElementById('packingFee').value) || 0;
+            const warehouseFee = parseFloat(document.getElementById('warehouseFee').value) || 0;
+            const printingPlateFee = parseFloat(document.getElementById('printingPlateFee').value) || 0;
+            const moldFee = parseFloat(document.getElementById('moldFee').value) || 0;
+            const profit = parseFloat(document.getElementById('profit').value) || 0.95;
+            const productName = document.getElementById('productName').value || '纸箱';
+            const length = parseFloat(document.getElementById('cartonLength').value) || 0;
+            const width = parseFloat(document.getElementById('cartonWidth').value) || 0;
+            const height = parseFloat(document.getElementById('cartonHeight').value) || 0;
+            const ear = parseFloat(document.getElementById('cartonEar').value) || 0;
+            const quantity = parseInt(document.getElementById('cartonQuantity').value) || 0;
+            const boardPrice = cartonBoardPrice;
+            const cartonArea = calculateCartonArea(length, width, height, ear);
+            const totalCartonArea = cartonArea * quantity;
+            const totalProcessingFeePerArea = cartonProcessingFee + packingFee + warehouseFee;
+            const boardCost = (boardPrice + totalProcessingFeePerArea) / profit * totalCartonArea;
+            const subtotal = boardCost + printingPlateFee + moldFee;
+            const unitPrice = quantity > 0 ? subtotal / quantity : 0;
+            
+            const quote = {
+                id: Date.now(),
+                material: material || '-',
+                corrugated: corrugated || '-',
+                productName: productName,
+                dimensions: `${length}*${width}*${height}`,
+                quantity: quantity,
+                unitPrice: unitPrice.toFixed(3),
+                subtotal: subtotal.toFixed(2),
+                boardPrice: boardPrice
+            };
+            
+            addedQuotes.push(quote);
+            updateAddedQuotesList();
+            saveToLocalStorage();
+            showNotification('已添加！', 'success');
+            
+            const btn = document.getElementById('addQuoteBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i class="fas fa-check"></i> 已添加`;
+            btn.classList.add('bg-green-600');
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.classList.remove('bg-green-600');
+            }, 1000);
+        }
+
+        function updateAddedQuotesList() {
+            const container = document.getElementById('addedQuotesBody');
+            document.getElementById('quoteCount').textContent = addedQuotes.length;
+            container.innerHTML = '';
+            
+            if (addedQuotes.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm italic">暂无报价</div>`;
+                return;
+            }
+            
+            addedQuotes.forEach((quote, index) => {
+                const item = document.createElement('div');
+                item.className = "quote-item";
+                item.innerHTML = `
+                    <div class="flex justify-between mb-1">
+                        <span class="font-bold text-gray-800 text-sm truncate pr-2 w-1/2">${quote.productName}</span>
+                        <span class="font-bold text-blue-700 text-sm">¥${quote.unitPrice}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 flex gap-2 mb-1 flex-wrap">
+                        <span>${quote.dimensions}</span>
+                        <span class="bg-gray-100 px-1 rounded">${quote.material}</span>
+                        <span>x${quote.quantity}</span>
+                    </div>
+                    <div class="flex justify-between items-center mt-1">
+                        <span class="text-xs text-gray-400">小计: ¥${quote.subtotal}</span>
+                        <button onclick="removeQuote(${index})" class="text-gray-300 hover:text-red-500 p-1">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+        
+        window.removeQuote = function(index) {
+            addedQuotes.splice(index, 1);
+            updateAddedQuotesList();
+            saveToLocalStorage();
+        }
+
+        function clearAllQuotes() {
+            if (addedQuotes.length > 0 && confirm('清空列表？')) {
+                addedQuotes = [];
+                updateAddedQuotesList();
+                saveToLocalStorage();
+            }
+        }
+
+        function generateCartonQuote() {
+            if (addedQuotes.length === 0) { showNotification('请先添加报价！', 'error'); return; }
+            
+            const now = new Date();
+            document.getElementById('quoteDate').textContent = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${now.getMinutes()}`;
+            
+            const quoteTableBody = document.getElementById('quoteTableBody');
+            quoteTableBody.innerHTML = '';
+            let totalAmount = 0;
+            
+            addedQuotes.forEach(quote => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-2 border-b border-gray-50 text-gray-800 font-medium">
+                        <div>${quote.material}</div>
+                        <div class="text-gray-400 scale-90 origin-left">${quote.corrugated}</div>
+                    </td>
+                    <td class="p-2 border-b border-gray-50 text-gray-600">${quote.productName}</td>
+                    <td class="p-2 border-b border-gray-50 text-center text-gray-600 text-[10px]">${quote.dimensions}</td>
+                    <td class="p-2 border-b border-gray-50 text-center text-gray-600">${quote.quantity}</td>
+                    <td class="p-2 border-b border-gray-50 text-right font-bold text-gray-800">${quote.unitPrice}</td>
+                    <td class="p-2 border-b border-gray-50 text-right text-gray-600">${quote.subtotal}</td>
+                `;
+                quoteTableBody.appendChild(row);
+                totalAmount += parseFloat(quote.subtotal);
+            });
+            
+            const totalRow = document.createElement('tr');
+            totalRow.className = "bg-gray-50 font-bold";
+            totalRow.innerHTML = `
+                <td class="p-2 text-gray-800" colspan="5">总计</td>
+                <td class="p-2 text-right text-gray-800">¥${totalAmount.toFixed(2)}</td>
+            `;
+            quoteTableBody.appendChild(totalRow);
+            toggleModal('quoteModal', true);
+        }
+
+        function saveBoardData() {
+            const boardName = document.getElementById('boardNameInput').value.trim();
+            if (!boardName) { showNotification('输入名称！', 'error'); return; }
+            
+            const calculationState = getCalculationState();
+            const totalPrice = parseFloat(document.getElementById('totalPrice').textContent) || 0;
+            const processingFee = parseFloat(document.getElementById('processingFee').value) || 0;
+            
+            const boardData = {
+                id: Date.now(),
+                name: boardName,
+                paperType: currentPaperType,
+                calculationState: calculationState,
+                totalPrice: totalPrice,
+                processingFee: processingFee,
+                saveDate: new Date().toLocaleDateString()
+            };
+            
+            savedBoardData.push(boardData);
+            saveToLocalStorage();
+            updateSavedBoardSelect();
+            document.getElementById('boardNameInput').value = '';
+            showNotification('已保存！', 'success');
+        }
+
+        function loadSavedBoardData() {
+            const savedBoardDataStr = localStorage.getItem('paperBoardCalc_savedBoardData');
+            if (savedBoardDataStr) savedBoardData = JSON.parse(savedBoardDataStr);
+        }
+
+        function updateSavedBoardSelect() {
+            const select = document.getElementById('selectSavedBoard');
+            select.innerHTML = '<option value="" disabled selected>选择纸板数据...</option>';
+            const useCurrentOption = document.createElement('option');
+            useCurrentOption.value = "use_current";
+            useCurrentOption.textContent = "使用上方配置数据";
+            select.appendChild(useCurrentOption);
+            
+            savedBoardData.forEach((board, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${board.name} (¥${board.totalPrice.toFixed(3)})`;
+                select.appendChild(option);
+            });
+        }
+
+        function loadSelectedBoardData(selectedValue) {
+            if (!selectedValue || selectedValue === '') {
+                cartonBoardPrice = 0;
+                document.getElementById('cartonBoardPrice').value = 0;
+                document.getElementById('cartonBoardPriceDisplay').textContent = '0.000 元/㎡';
+                document.getElementById('currentBoardSource').textContent = '未选择';
+                currentBoardSourceType = '未选择';
+                calculateCartonQuote();
+            } else if (selectedValue === "use_current") {
+                const totalPrice = parseFloat(document.getElementById('totalPrice').textContent) || 0;
+                cartonBoardPrice = totalPrice;
+                document.getElementById('cartonBoardPrice').value = totalPrice;
+                document.getElementById('cartonBoardPriceDisplay').textContent = totalPrice.toFixed(3) + ' 元/㎡';
+                document.getElementById('currentBoardSource').textContent = '自选配置';
+                currentBoardSourceType = '使用纸板配置内的数据';
+                calculateCartonQuote();
+            } else {
+                const selectedIndex = parseInt(selectedValue);
+                if (!isNaN(selectedIndex)) {
+                    const boardData = savedBoardData[selectedIndex];
+                    cartonBoardPrice = boardData.totalPrice;
+                    document.getElementById('cartonBoardPrice').value = boardData.totalPrice;
+                    document.getElementById('cartonBoardPriceDisplay').textContent = boardData.totalPrice.toFixed(3) + ' 元/㎡';
+                    document.getElementById('currentBoardSource').textContent = boardData.name;
+                    currentBoardSourceType = boardData.name;
+                    calculateCartonQuote();
+                }
+            }
+        }
+
+        function getCalculationState() {
+            const state = { paperType: currentPaperType, rows: [] };
+            document.querySelectorAll('.paper-row').forEach(row => {
+                const paperType = row.dataset.paperType;
+                const weightSelect = row.querySelector('.weight-select');
+                const corrugatedSelect = row.querySelector('.corrugated-type-select');
+                state.rows.push({
+                    paperType: paperType,
+                    weight: weightSelect ? weightSelect.value : '',
+                    corrugatedType: corrugatedSelect ? corrugatedSelect.value : ''
+                });
+            });
+            return state;
+        }
+
+        function restoreCalculationState(state) {
+            try {
+                if (state.paperType !== currentPaperType) return;
+                const rows = document.querySelectorAll('.paper-row');
+                rows.forEach((row, index) => {
+                    if (index < state.rows.length) {
+                        const rowState = state.rows[index];
+                        const weightSelect = row.querySelector('.weight-select');
+                        const corrugatedSelect = row.querySelector('.corrugated-type-select');
+                        if (weightSelect && rowState.weight) weightSelect.value = rowState.weight;
+                        if (corrugatedSelect && rowState.corrugatedType) corrugatedSelect.value = rowState.corrugatedType;
+                    }
+                });
+                setTimeout(() => updateCalculation(), 100);
+            } catch (error) { console.error('恢复失败:', error); }
+        }
+
+        function renderSavedBoardTable() {
+            const tbody = document.getElementById('savedBoardBody');
+            const countElement = document.getElementById('boardDataCount');
+            tbody.innerHTML = '';
+            
+            if (savedBoardData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-400">暂无数据</td></tr>`;
+                countElement.textContent = '0 条数据';
+                return;
+            }
+            
+            countElement.textContent = `${savedBoardData.length} 条数据`;
+            
+            savedBoardData.forEach((board, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-2 text-gray-800">
+                        <div class="font-medium">${board.name}</div>
+                        <div class="text-[10px] text-gray-400">${board.saveDate}</div>
+                    </td>
+                    <td class="p-2 text-gray-600">${board.totalPrice.toFixed(2)}</td>
+                    <td class="p-2 text-right">
+                        <button onclick="deleteBoardData(${index})" class="text-red-600 bg-red-50 p-1.5 rounded text-xs">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        window.deleteBoardData = function(index) {
+            if (confirm(`删除？`)) {
+                savedBoardData.splice(index, 1);
+                saveToLocalStorage();
+                updateSavedBoardSelect();
+                renderSavedBoardTable();
+                showNotification(`已删除！`, 'success');
+            }
+        };
+
+        function clearAllBoardData() {
+            if (savedBoardData.length > 0 && confirm('清空所有？')) {
+                savedBoardData = [];
+                saveToLocalStorage();
+                updateSavedBoardSelect();
+                renderSavedBoardTable();
+                showNotification('已清空！', 'success');
+            }
+        }
+
+        function filterPaperData() {
+            filteredPaperData = paperData.filter(item => {
+                if (currentFilterType !== "全部" && item.type !== currentFilterType) return false;
+                if (currentSearchTerm) {
+                    const searchLower = currentSearchTerm.toLowerCase();
+                    return item.type.toLowerCase().includes(searchLower) || item.weight.toString().includes(searchLower) ||
+                           item.price.toString().includes(searchLower) || item.supplier.toLowerCase().includes(searchLower);
+                }
+                return true;
+            });
+        }
+        
+        function renderPaperDataTable() {
+            const tbody = document.getElementById('paperDataBody');
+            const dataCountInfo = document.getElementById('dataCountInfo');
+            tbody.innerHTML = '';
+            
+            if (filteredPaperData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">无数据</td></tr>`;
+                dataCountInfo.textContent = `0条`;
+                return;
+            }
+            
+            dataCountInfo.textContent = `${filteredPaperData.length}条`;
+            
+            filteredPaperData.forEach(paper => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2 text-gray-800">${paper.type}</td>
+                    <td class="p-2 text-gray-600">${paper.weight}</td>
+                    <td class="p-2 text-gray-600">${paper.price}</td>
+                    <td class="p-2 text-gray-500 text-xs">${paper.supplier}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clearAllPaperData() {
+            paperData = []; 
+            filteredPaperData = []; 
+            filterPaperData(); 
+            renderPaperDataTable();
+            saveToLocalStorage(); 
+            showNotification('已清空！', 'success');
+        }
+
+        function toggleModal(id, show) {
+            const el = document.getElementById(id);
+            if (show) {
+                el.classList.add('show');
+                document.body.style.overflow = 'hidden';
+            } else {
+                el.classList.remove('show');
+                document.body.style.overflow = 'auto';
+            }
+        }
+
+        function switchTab(tab) {
+            const tabPaper = document.getElementById('tabPaperData');
+            const tabAdmin = document.getElementById('tabAdmin');
+            const contentPaper = document.getElementById('contentPaperData');
+            const contentAdmin = document.getElementById('contentAdmin');
+            
+            if (tab === 'paper') {
+                tabPaper.className = "flex-1 py-3 text-sm font-semibold text-blue-600 border-b-2 border-blue-600 bg-blue-50";
+                tabAdmin.className = "flex-1 py-3 text-sm font-semibold text-gray-500 hover:bg-gray-50";
+                contentPaper.classList.remove('hidden');
+                contentAdmin.classList.add('hidden');
+            } else {
+                tabAdmin.className = "flex-1 py-3 text-sm font-semibold text-blue-600 border-b-2 border-blue-600 bg-blue-50";
+                tabPaper.className = "flex-1 py-3 text-sm font-semibold text-gray-500 hover:bg-gray-50";
+                contentAdmin.classList.remove('hidden');
+                contentPaper.classList.add('hidden');
+            }
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const notificationText = document.getElementById('notificationText');
+            notificationText.textContent = message;
+            notification.className = 'notification';
+            if (type === 'error') {
+                notification.classList.add('error');
+                notification.querySelector('i').className = 'fas fa-exclamation-circle';
+            } else {
+                notification.querySelector('i').className = 'fas fa-check-circle';
+            }
+            notification.classList.add('show');
+            setTimeout(() => { notification.classList.remove('show'); }, 3000);
+        }
+
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem('paperBoardCalc_paperData', JSON.stringify(paperData));
+                localStorage.setItem('paperBoardCalc_currentPaperType', currentPaperType);
+                localStorage.setItem('paperBoardCalc_currentCartonType', currentCartonType);
+                localStorage.setItem('paperBoardCalc_isFoldable', JSON.stringify(isFoldable));
+                localStorage.setItem('paperBoardCalc_processingFee', document.getElementById('processingFee').value);
+                localStorage.setItem('paperBoardCalc_calculationState', JSON.stringify(getCalculationState()));
+                localStorage.setItem('paperBoardCalc_savedBoardData', JSON.stringify(savedBoardData));
+                localStorage.setItem('paperBoardCalc_addedQuotes', JSON.stringify(addedQuotes));
+            } catch (error) { console.error('保存失败:', error); }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const savedPaperData = localStorage.getItem('paperBoardCalc_paperData');
+                if (savedPaperData) paperData = JSON.parse(savedPaperData);
+                
+                const savedPaperType = localStorage.getItem('paperBoardCalc_currentPaperType');
+                if (savedPaperType) {
+                    currentPaperType = savedPaperType;
+                    document.querySelectorAll('.paper-type-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                        if (btn.dataset.type === currentPaperType) btn.classList.add('active');
+                    });
+                }
+                
+                const savedCartonType = localStorage.getItem('paperBoardCalc_currentCartonType');
+                if (savedCartonType) {
+                    currentCartonType = savedCartonType;
+                    document.querySelectorAll('.carton-type-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                        if (btn.dataset.type === currentCartonType) btn.classList.add('active');
+                    });
+                }
+                
+                const savedFoldable = localStorage.getItem('paperBoardCalc_isFoldable');
+                if (savedFoldable) {
+                    isFoldable = JSON.parse(savedFoldable);
+                    const foldableBtn = document.getElementById('foldableBtn');
+                    if (isFoldable) {
+                        foldableBtn.classList.add('active');
+                        foldableBtn.textContent = '可拼';
+                    } else {
+                        foldableBtn.classList.remove('active');
+                        foldableBtn.textContent = '不可拼';
+                    }
+                }
+                
+                const savedProcessingFee = localStorage.getItem('paperBoardCalc_processingFee');
+                if (savedProcessingFee) document.getElementById('processingFee').value = savedProcessingFee;
+                
+                const savedBoardDataStr = localStorage.getItem('paperBoardCalc_savedBoardData');
+                if (savedBoardDataStr) savedBoardData = JSON.parse(savedBoardDataStr);
+                
+                const savedAddedQuotes = localStorage.getItem('paperBoardCalc_addedQuotes');
+                if (savedAddedQuotes) {
+                    addedQuotes = JSON.parse(savedAddedQuotes);
+                    updateAddedQuotesList();
+                }
+            } catch (error) { console.error('加载失败:', error); }
+        }
+
+        function copyQuoteToClipboard() {
+            showNotification('生成中...', 'info');
+            const quoteContentWrapper = document.getElementById('quoteContentWrapper');
+            html2canvas(quoteContentWrapper, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+                canvas.toBlob(blob => {
+                    const item = new ClipboardItem({ "image/png": blob });
+                    navigator.clipboard.write([item]).then(() => {
+                        showNotification('已复制图片！');
+                    }).catch(() => offerImageDownload(canvas, '复制失败，是否下载？'));
+                }, 'image/png');
+            });
+        }
+        
+        function saveQuoteImage() {
+            showNotification('生成中...', 'info');
+            const quoteContentWrapper = document.getElementById('quoteContentWrapper');
+            html2canvas(quoteContentWrapper, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `纸箱报价_${new Date().getTime()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showNotification('已下载！');
+            });
+        }
+        
+        function offerImageDownload(canvas, message) {
+            if (confirm(message)) {
+                const link = document.createElement('a');
+                link.download = `纸箱报价_${new Date().getTime()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }
+        }
+
+        function importExcelData() {
+            const fileInput = document.getElementById('adminExcelFile');
+            if (!fileInput.files.length) { showNotification('请选择文件！', 'error'); return; }
+            const file = fileInput.files[0];
+            if (!confirm('导入将替换现有数据，继续？')) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                    
+                    const newPaperData = [];
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (row.length >= 3) {
+                            let paperType = (row[0] || '').trim();
+                            if(paperType === "面纸" || paperType === "里纸") paperType = "箱板纸";
+                            else if(paperType === "芯纸") paperType = "瓦纸";
+                            
+                            if (paperType === "箱板纸" || paperType === "瓦纸") {
+                                newPaperData.push({
+                                    type: paperType,
+                                    weight: parseFloat(row[1]) || 0,
+                                    price: parseFloat(row[2]) || 0,
+                                    corrugatedType: paperType === "箱板纸" ? "-" : "B楞",
+                                    supplier: row[3] || '',
+                                    updateDate: row[4] || ''
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (newPaperData.length > 0) {
+                        paperData = newPaperData; 
+                        filterPaperData(); 
+                        initCalculationTable(); 
+                        updateCalculation(); 
+                        renderPaperDataTable(); 
+                        saveToLocalStorage();
+                        showNotification(`导入 ${newPaperData.length} 条数据！`, 'success');
+                    } else {
+                        showNotification('无有效数据！', 'error');
+                    }
+                } catch (error) { showNotification('导入失败！', 'error'); }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        
+        function downloadTemplate() {
+            const templateData = [
+                ["纸张类型","克重","价格","供应商","时间"],
+                ["箱板纸",110,3330,"厂A","2025-12"],
+                ["瓦纸",120,3400,"厂B","2025-11"]
+            ];
+            const worksheet = XLSX.utils.aoa_to_sheet(templateData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+            XLSX.writeFile(workbook, "导入模板.xlsx");
+        }
+    </script>
+</body>
+</html>
